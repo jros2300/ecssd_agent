@@ -1,0 +1,87 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "ECS Environment with Service Discovery",
+	"Parameters" : {
+		"ImageId": {
+			"Description": "AMI for the ECS instances, Ref: http://docs.aws.amazon.com/AmazonECS/latest/developerguide/launch_container_instance.html",
+			"Type": "String",
+			"Default": "ami-77ab1504"
+		},
+		"InstanceSecurityGroup": {
+			"Description": "Security Group for the servers",
+			"Type": "AWS::EC2::SecurityGroup::GroupName"
+		},
+		"KeyName": {
+			"Description": "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+			"Type": "AWS::EC2::KeyPair::KeyName"
+		},
+		"InstanceType": {
+			"Description": "Server EC2 instance type",
+			"Type": "String",
+			"Default": "t2.medium"
+		},
+		"Subnets": {
+			"Description": "List of Subnets used for the ECS servers",
+			"Type": "List<AWS::EC2::Subnet::Id>"
+		}
+	},
+	"Resources" : {
+		"LaunchConfig": {
+			"Type": "AWS::AutoScaling::LaunchConfiguration",
+			"Metadata" : {
+				"Comment" : "Install a simple application",
+				"AWS::CloudFormation::Init" : {
+					"config" : {
+						"files" : {
+							"/etc/init/ecssd_agent.conf" : {
+								"source" : "",
+								"mode"    : "000644",
+								"owner"   : "root",
+								"group"   : "root"
+							}
+						},
+						"services" : {
+							"sysvinit" : {
+								"httpd"    : { "enabled" : "true", "ensureRunning" : "true" }
+							}
+						}
+					}
+				}
+			},
+			"Properties": {
+				"KeyName": { "Ref": "KeyName" },
+				"ImageId": { "Ref": "ImageId" },
+				"SecurityGroups": [ { "Ref": "InstanceSecurityGroup" } ],
+				"InstanceType": { "Ref": "InstanceType" },
+				"IamInstanceProfile": { "Fn::GetAtt" : ["InstanceProfile", "Arn"] },
+				"UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+					"#!/bin/bash -xe\n",
+					"yum update -y aws-cfn-bootstrap\n",
+
+					"/opt/aws/bin/cfn-init -v ",
+					"         --stack ", { "Ref" : "AWS::StackName" },
+					"         --resource LaunchConfig ",
+					"         --region ", { "Ref" : "AWS::Region" }, "\n"
+				]]}}
+			}
+		},
+		"ServerGroup": {
+			"Type": "AWS::AutoScaling::AutoScalingGroup",
+			"Properties": {
+				"VPCZoneIdentifier": { "Ref": "Subnets" },
+				"LaunchConfigurationName": { "Ref": "LaunchConfig" },
+				"MinSize": "0",
+				"MaxSize": "0"
+			}
+		},
+		"InstanceProfile": {
+			"Type": "AWS::IAM::InstanceProfile",
+			"Properties": {
+				"Path": "/",
+				"Roles": [ {
+					"Ref": "InstanceRole"
+				} ]
+			}
+		}
+	}
+}
