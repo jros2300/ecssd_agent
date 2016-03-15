@@ -69,7 +69,7 @@
 								"group"   : "root"
 							},
 							"/usr/local/bin/ecssd_agent": {
-								"source"  : "https://github.com/jros2300/ecssd_agent/releases/download/1.0/ecssd_agent",
+								"source"  : "https://github.com/jros2300/ecssd_agent/releases/download/1.1/ecssd_agent",
 								"mode"    : "000755",
 								"owner"   : "root",
 								"group"   : "root"

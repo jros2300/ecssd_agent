@@ -104,9 +104,12 @@ func (th *dockerHandler) Handle(event *docker.APIEvents) error {
 }
 
 type Config struct {
-	EcsCluster string
-	Region     string
+	EcsCluster   string
+	Region       string
+	HostedZoneId string
 }
+
+var config Config
 
 func testError(err error) {
 	if err != nil {
@@ -139,6 +142,23 @@ type ContainerInfo struct {
 	Name       string
 }
 
+func getDNSHostedZoneId() (string, error) {
+	r53 := route53.New(session.New())
+	params := &route53.ListHostedZonesByNameInput{
+		DNSName: aws.String("servicediscovery.internal"),
+	}
+
+	zones, err := r53.ListHostedZonesByName(params)
+
+	if err == nil {
+		if len(zones.HostedZones) > 0 {
+			return *zones.HostedZones[0].Id, nil
+		}
+	}
+
+	return "", err
+}
+
 func createDNSRecord(serviceName string, dockerId string, port string) error {
 	r53 := route53.New(session.New())
 	hostname, _ := os.Hostname()
@@ -163,7 +183,7 @@ func createDNSRecord(serviceName string, dockerId string, port string) error {
 			},
 			Comment: aws.String("Service Discovery Created Record"),
 		},
-		HostedZoneId: aws.String("Z2732IVNA0Y7I1"),
+		HostedZoneId: aws.String(config.HostedZoneId),
 	}
 	_, err := r53.ChangeResourceRecordSets(params)
 	testErrorNoFatal(err)
@@ -175,7 +195,7 @@ func deleteDNSRecord(serviceName string, dockerId string) error {
 	var err error
 	r53 := route53.New(session.New())
 	paramsList := &route53.ListResourceRecordSetsInput{
-		HostedZoneId:          aws.String("Z2732IVNA0Y7I1"), // Required
+		HostedZoneId:          aws.String(config.HostedZoneId), // Required
 		MaxItems:              aws.String("10"),
 		StartRecordIdentifier: aws.String(dockerId),
 		StartRecordName:       aws.String(serviceName + ".servicediscovery.internal"),
@@ -219,7 +239,7 @@ func deleteDNSRecord(serviceName string, dockerId string) error {
 				},
 			},
 		},
-		HostedZoneId: aws.String("Z2732IVNA0Y7I1"),
+		HostedZoneId: aws.String(config.HostedZoneId),
 	}
 	_, err = r53.ChangeResourceRecordSets(params)
 	testErrorNoFatal(err)
@@ -232,6 +252,19 @@ var dockerClient *docker.Client
 func main() {
 	var err error
 	var sum time.Duration
+	var zoneId string
+	for {
+		zoneId, err = getDNSHostedZoneId()
+		if err == nil {
+			break
+		}
+		if sum > 8 {
+			testError(err)
+		}
+		time.Sleep(sum * time.Second)
+		sum += 2
+	}
+	config.HostedZoneId = zoneId
 	endpoint := "unix:///var/run/docker.sock"
 	startFn := func(event *docker.APIEvents) error {
 		var err error
@@ -299,5 +332,4 @@ func main() {
 	router.Start()
 	fmt.Println("Waiting events")
 	select {}
-
 }
