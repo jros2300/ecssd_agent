@@ -14,6 +14,18 @@ You need a private hosted zone in Route53 to register all the containers for eac
 
 To create an ECS Cluster with all the required configuration you can use the CloudFormation template "environment.cform". This template creates an Autoscaling Configuration and Group, and an ECS cluster.
 
+You should create a Lambda function to monitor the services, in case a host fails completely and the agent cannot delete the records. You can also use the Lambda function to do HTTP health checks for your containers.
+
+Create a role for the Lambda function, this role should have full access to Route53 (at least to the intenal hosted zone), read only access to ECS and read only access to EC2.
+
+Create a lambda function using the code in lambda_health_check.py, you can modify the parameters in the funtion:
+
+* ecs_clusters: This is an array with all the clusters with the agent installed. You can leave it empty and the function will get the list of clusters from your account.
+* check_health: Indicate if you want to do HTTP Health Check to all the containers.
+* check_health_path: The path of the Health Check URL in the containers.
+
+You should then schedule the Lambda funtion to run every 5 minutes.
+
 ## Usage
 Once the cluster is created, you can start launching tasks and services into the ECS Cluster. For each task you want to register as a MicroService, you should specify a Name to the ContainerDefinition, this name is going to be the name of your service.
 
